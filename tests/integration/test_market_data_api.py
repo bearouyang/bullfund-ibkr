@@ -477,3 +477,185 @@ class TestMultipleSymbols:
                     f"  ✓ {symbol}: {data['count']} 根K线, "
                     f"最新收盘={latest_bar['close']}"
                 )
+
+
+class TestRealtimeBars:
+    """测试实时K线数据端点"""
+
+    def test_get_realtime_bars_stock(self, http_client, sample_stock_contract):
+        """测试获取股票实时5秒K线数据"""
+        bar_request = {
+            "contract": sample_stock_contract,
+            "what_to_show": "TRADES",
+            "use_rth": True,
+        }
+
+        response = http_client.post(
+            "/api/v1/market-data/realtime-bars", json=bar_request
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # 验证响应结构
+        assert "bars" in data
+        assert "count" in data
+        assert isinstance(data["bars"], list)
+
+        print(f"\n✓ 获取 {sample_stock_contract['symbol']} 实时K线: {data['count']} 根")
+
+        # 如果有数据，验证K线结构
+        if data["count"] > 0:
+            bar = data["bars"][0]
+            assert "time" in bar
+            assert "open" in bar
+            assert "high" in bar
+            assert "low" in bar
+            assert "close" in bar
+            assert "volume" in bar
+            assert "wap" in bar
+            assert "count" in bar
+
+            print(f"  最新K线: 时间={bar['time']}, 收盘={bar['close']}")
+
+
+class TestMarketData:
+    """测试实时市场数据端点"""
+
+    def test_get_market_data_snapshot(self, http_client, sample_stock_contract):
+        """测试获取市场数据快照"""
+        request_data = {
+            "contract": sample_stock_contract,
+            "snapshot": True,
+        }
+
+        response = http_client.post(
+            "/api/v1/market-data/market-data", json=request_data
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # 验证响应结构
+        assert "symbol" in data
+        assert data["symbol"] == sample_stock_contract["symbol"]
+
+        # 验证价格字段
+        price_fields = ["bid", "ask", "last", "high", "low", "close", "open"]
+        for field in price_fields:
+            assert field in data
+
+        print(f"\n✓ 获取 {sample_stock_contract['symbol']} 市场数据快照")
+        print(f"  买价={data['bid']}, 卖价={data['ask']}, 最新={data['last']}")
+        print(f"  成交量={data['volume']}")
+
+    def test_get_market_data_streaming(self, http_client, sample_stock_contract):
+        """测试获取流式市场数据"""
+        request_data = {
+            "contract": sample_stock_contract,
+            "snapshot": False,
+            "generic_tick_list": "",
+        }
+
+        response = http_client.post(
+            "/api/v1/market-data/market-data", json=request_data
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "symbol" in data
+        print(f"\n✓ 获取 {sample_stock_contract['symbol']} 流式市场数据")
+
+
+class TestTickData:
+    """测试Tick数据端点"""
+
+    def test_get_tick_data_last(self, http_client, sample_stock_contract):
+        """测试获取最新成交tick数据"""
+        request_data = {
+            "contract": sample_stock_contract,
+            "tick_type": "Last",
+            "number_of_ticks": 100,
+            "ignore_size": False,
+        }
+
+        response = http_client.post(
+            "/api/v1/market-data/tick-data", json=request_data
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # 验证响应结构
+        assert "ticks" in data
+        assert "count" in data
+        assert isinstance(data["ticks"], list)
+
+        print(f"\n✓ 获取 {sample_stock_contract['symbol']} Tick数据: {data['count']} 条")
+
+        # 如果有数据，验证tick结构
+        if data["count"] > 0:
+            tick = data["ticks"][0]
+            assert "time" in tick
+            assert "price" in tick or "size" in tick
+
+            print(f"  最新Tick: 时间={tick['time']}")
+
+    def test_get_tick_data_bid_ask(self, http_client, sample_stock_contract):
+        """测试获取买卖价tick数据"""
+        request_data = {
+            "contract": sample_stock_contract,
+            "tick_type": "BidAsk",
+            "number_of_ticks": 50,
+        }
+
+        response = http_client.post(
+            "/api/v1/market-data/tick-data", json=request_data
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "ticks" in data
+        print(f"\n✓ 获取买卖价Tick数据: {data['count']} 条")
+
+
+class TestMarketDepth:
+    """测试市场深度数据端点"""
+
+    def test_get_market_depth(self, http_client, sample_stock_contract):
+        """测试获取市场深度(Level 2)数据"""
+        request_data = {
+            "contract": sample_stock_contract,
+        }
+
+        response = http_client.post(
+            "/api/v1/market-data/market-depth", json=request_data
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # 验证响应结构
+        assert "symbol" in data
+        assert "bids" in data
+        assert "asks" in data
+        assert isinstance(data["bids"], list)
+        assert isinstance(data["asks"], list)
+
+        print(f"\n✓ 获取 {sample_stock_contract['symbol']} 市场深度数据")
+        print(f"  买单档位: {len(data['bids'])}")
+        print(f"  卖单档位: {len(data['asks'])}")
+
+        # 如果有数据，验证档位结构
+        if len(data["bids"]) > 0:
+            bid = data["bids"][0]
+            assert "position" in bid
+            assert "price" in bid
+            assert "size" in bid
+            print(f"  最优买价: {bid['price']} x {bid['size']}")
+
+        if len(data["asks"]) > 0:
+            ask = data["asks"][0]
+            print(f"  最优卖价: {ask['price']} x {ask['size']}")

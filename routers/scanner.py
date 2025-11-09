@@ -1,0 +1,76 @@
+from fastapi import APIRouter, HTTPException
+import logging
+from fastapi import Request
+from models import ScannerRequest
+from ib_async import ScannerSubscription
+
+router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+@router.post("/scan")
+async def run_scanner(request: ScannerRequest, req: Request):
+    """Run a market scanner to find contracts matching criteria."""
+    try:
+        ib = req.app.state.ib
+        
+        # Create scanner subscription
+        sub = ScannerSubscription(
+            instrument=request.instrument,
+            locationCode=request.location_code,
+            scanCode=request.scan_code,
+        )
+        
+        # Set optional parameters
+        if request.above_price is not None:
+            sub.abovePrice = request.above_price
+        if request.below_price is not None:
+            sub.belowPrice = request.below_price
+        if request.above_volume is not None:
+            sub.aboveVolume = request.above_volume
+        if request.market_cap_above is not None:
+            sub.marketCapAbove = request.market_cap_above
+        if request.market_cap_below is not None:
+            sub.marketCapBelow = request.market_cap_below
+        if request.number_of_rows:
+            sub.numberOfRows = request.number_of_rows
+        
+        # Request scanner data
+        scan_data = await ib.reqScannerDataAsync(sub)
+        
+        results = [
+            {
+                "rank": item.rank,
+                "contract": {
+                    "con_id": item.contractDetails.contract.conId,
+                    "symbol": item.contractDetails.contract.symbol,
+                    "sec_type": item.contractDetails.contract.secType,
+                    "exchange": item.contractDetails.contract.exchange,
+                    "currency": item.contractDetails.contract.currency,
+                    "local_symbol": item.contractDetails.contract.localSymbol,
+                },
+                "distance": item.distance,
+                "benchmark": item.benchmark,
+                "projection": item.projection,
+                "legs": item.legsStr,
+            }
+            for item in scan_data
+        ]
+        
+        return {"results": results, "count": len(results)}
+    except Exception as e:
+        logger.error(f"Error running scanner: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/scanner-parameters")
+async def get_scanner_parameters(req: Request):
+    """Get available scanner parameters."""
+    try:
+        ib = req.app.state.ib
+        params = await ib.reqScannerParametersAsync()
+        
+        return {"parameters": params}
+    except Exception as e:
+        logger.error(f"Error getting scanner parameters: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

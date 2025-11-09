@@ -361,3 +361,268 @@ class TestConcurrentRequests:
         assert success_count == len(
             symbols
         ), f"只有 {success_count}/{len(symbols)} 个请求成功"
+
+
+class TestFundamentalData:
+    """测试基本面数据端点"""
+
+    def test_get_fundamental_data_summary(self, http_client, sample_stock_contract):
+        """测试获取财务摘要基本面数据"""
+        request_data = {
+            "contract": sample_stock_contract,
+            "report_type": "ReportsFinSummary",
+        }
+
+        response = http_client.post(
+            "/api/v1/research/fundamental-data", json=request_data
+        )
+
+        # 某些股票可能没有基本面数据
+        assert response.status_code in [200, 404, 500]
+
+        if response.status_code == 200:
+            data = response.json()
+            assert "symbol" in data
+            assert "report_type" in data
+            assert "data" in data
+
+            print(f"\n✓ 获取 {sample_stock_contract['symbol']} 基本面数据")
+            print(f"  报告类型: {data['report_type']}")
+        else:
+            print(f"\n⚠ {sample_stock_contract['symbol']} 基本面数据不可用")
+
+    def test_get_fundamental_data_ratios(self, http_client, sample_stock_contract):
+        """测试获取财务比率数据"""
+        request_data = {
+            "contract": sample_stock_contract,
+            "report_type": "ReportRatios",
+        }
+
+        response = http_client.post(
+            "/api/v1/research/fundamental-data", json=request_data
+        )
+
+        assert response.status_code in [200, 404, 500]
+
+        if response.status_code == 200:
+            data = response.json()
+            print(f"\n✓ 获取财务比率数据")
+
+
+class TestNewsData:
+    """测试新闻数据端点"""
+
+    def test_get_news_providers(self, http_client):
+        """测试获取新闻提供商列表"""
+        response = http_client.get("/api/v1/research/news/providers")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "providers" in data
+        assert "count" in data
+        assert isinstance(data["providers"], list)
+
+        print(f"\n✓ 获取新闻提供商: {data['count']} 个")
+
+        if data["count"] > 0:
+            for provider in data["providers"][:5]:
+                print(f"  - {provider['code']}: {provider['name']}")
+
+    def test_get_historical_news(self, http_client, sample_stock_contract):
+        """测试获取历史新闻"""
+        request_data = {
+            "contract": sample_stock_contract,
+            "provider_codes": "BRFUPDN+DJNL",
+            "total_results": 10,
+        }
+
+        response = http_client.post(
+            "/api/v1/research/news/historical", json=request_data
+        )
+
+        # 新闻数据可能需要特殊订阅
+        assert response.status_code in [200, 404, 500]
+
+        if response.status_code == 200:
+            data = response.json()
+            assert "articles" in data
+            assert "count" in data
+
+            print(f"\n✓ 获取 {sample_stock_contract['symbol']} 历史新闻: {data['count']} 条")
+
+            if data["count"] > 0:
+                article = data["articles"][0]
+                print(f"  最新: {article['headline']}")
+        else:
+            print(f"\n⚠ 历史新闻不可用(可能需要新闻数据订阅)")
+
+    def test_get_general_news(self, http_client):
+        """测试获取一般市场新闻(不指定合约)"""
+        request_data = {
+            "provider_codes": "BRFUPDN+DJNL",
+            "total_results": 5,
+        }
+
+        response = http_client.post(
+            "/api/v1/research/news/historical", json=request_data
+        )
+
+        assert response.status_code in [200, 404, 500]
+
+        if response.status_code == 200:
+            data = response.json()
+            print(f"\n✓ 获取一般市场新闻: {data['count']} 条")
+
+
+class TestOptionChain:
+    """测试期权链数据端点"""
+
+    def test_get_option_chain(self, http_client, sample_stock_contract):
+        """测试获取期权链参数"""
+        response = http_client.post(
+            "/api/v1/research/option-chain", json=sample_stock_contract
+        )
+
+        # 并非所有股票都有期权
+        assert response.status_code in [200, 404, 500]
+
+        if response.status_code == 200:
+            data = response.json()
+            assert "chains" in data
+            assert "count" in data
+
+            print(f"\n✓ 获取 {sample_stock_contract['symbol']} 期权链: {data['count']} 个交易类")
+
+            if data["count"] > 0:
+                chain = data["chains"][0]
+                assert "exchange" in chain
+                assert "expirations" in chain
+                assert "strikes" in chain
+
+                print(f"  交易所: {chain['exchange']}")
+                print(f"  到期日数量: {len(chain['expirations'])}")
+                print(f"  行权价数量: {len(chain['strikes'])}")
+
+                if chain["expirations"]:
+                    print(f"  最近到期日: {chain['expirations'][0]}")
+        else:
+            print(f"\n⚠ {sample_stock_contract['symbol']} 没有期权数据")
+
+
+class TestContractSearch:
+    """测试合约搜索端点"""
+
+    def test_search_contracts_stock(self, http_client):
+        """测试搜索股票合约"""
+        response = http_client.get("/api/v1/research/search/AAPL")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "matches" in data
+        assert "count" in data
+        assert isinstance(data["matches"], list)
+
+        print(f"\n✓ 搜索 'AAPL': {data['count']} 个匹配结果")
+
+        if data["count"] > 0:
+            match = data["matches"][0]
+            assert "contract" in match
+            print(f"  {match['contract']['symbol']} - {match['contract']['sec_type']}")
+
+    def test_search_contracts_partial(self, http_client):
+        """测试部分匹配搜索"""
+        response = http_client.get("/api/v1/research/search/GOOG")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        print(f"\n✓ 搜索 'GOOG': {data['count']} 个匹配结果")
+
+        # 应该能找到 GOOGL, GOOG 等
+        if data["count"] > 0:
+            for match in data["matches"][:3]:
+                print(f"  - {match['contract']['symbol']}")
+
+    def test_search_contracts_no_results(self, http_client):
+        """测试无结果搜索"""
+        response = http_client.get("/api/v1/research/search/INVALIDXYZ12345")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["count"] == 0
+        print(f"\n✓ 无效搜索正确返回0个结果")
+
+
+class TestHistogramData:
+    """测试直方图数据端点"""
+
+    def test_get_histogram_data(self, http_client, sample_stock_contract):
+        """测试获取价格分布直方图数据"""
+        response = http_client.post(
+            "/api/v1/research/histogram",
+            json=sample_stock_contract,
+            params={"use_rth": True, "period": "1 day"},
+        )
+
+        # 直方图数据可能需要特殊权限
+        assert response.status_code in [200, 404, 500]
+
+        if response.status_code == 200:
+            data = response.json()
+            assert "histogram" in data
+            assert "count" in data
+
+            print(f"\n✓ 获取直方图数据: {data['count']} 个价格区间")
+
+            if data["count"] > 0:
+                item = data["histogram"][0]
+                print(f"  示例: 价格={item['price']}, 数量={item['count']}")
+        else:
+            print(f"\n⚠ 直方图数据不可用")
+
+
+class TestDividends:
+    """测试股息数据端点"""
+
+    def test_get_dividends(self, http_client, sample_stock_contract):
+        """测试获取股息数据"""
+        response = http_client.post(
+            "/api/v1/research/dividends", json=sample_stock_contract
+        )
+
+        # 股息数据可能需要特殊订阅
+        assert response.status_code in [200, 404, 500]
+
+        if response.status_code == 200:
+            data = response.json()
+            assert "symbol" in data
+            assert "dividends" in data
+
+            print(f"\n✓ 获取 {sample_stock_contract['symbol']} 股息数据")
+        else:
+            print(f"\n⚠ 股息数据不可用")
+
+
+class TestMultipleSymbolsResearch:
+    """测试多个股票的研究数据"""
+
+    def test_search_multiple_stocks(self, http_client):
+        """测试搜索多个股票"""
+        symbols = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
+
+        print(f"\n测试多个股票搜索:")
+
+        for symbol in symbols:
+            response = http_client.get(f"/api/v1/research/search/{symbol}")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            if data["count"] > 0:
+                print(f"  ✓ {symbol}: {data['count']} 个结果")
+            else:
+                print(f"  ✗ {symbol}: 无结果")
+

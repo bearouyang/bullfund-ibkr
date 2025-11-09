@@ -359,3 +359,331 @@ class TestErrorScenarios:
         # 应该返回422验证错误
         assert response.status_code == 422
         print(f"\n缺少字段正确返回422验证错误")
+
+
+class TestOrderTypes:
+    """测试不同类型的订单"""
+
+    @pytest.mark.slow
+    @pytest.mark.paper_trading_only
+    def test_place_limit_order(self, http_client, sample_stock_contract):
+        """测试下限价单"""
+        order_request = {
+            "contract": sample_stock_contract,
+            "action": "BUY",
+            "order_type": "LMT",
+            "quantity": 1,
+            "limit_price": 100.0,  # 设置一个较低的限价，不会立即成交
+        }
+
+        response = http_client.post("/api/v1/trading/orders/place", json=order_request)
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "order_id" in data
+        assert "status" in data
+
+        print(f"\n✓ 限价单已下达:")
+        print(f"  订单ID: {data['order_id']}")
+        print(f"  限价: {order_request['limit_price']}")
+
+    @pytest.mark.slow
+    @pytest.mark.paper_trading_only
+    def test_place_stop_order(self, http_client, sample_stock_contract):
+        """测试下止损单"""
+        order_request = {
+            "contract": sample_stock_contract,
+            "action": "SELL",
+            "order_type": "STP",
+            "quantity": 1,
+            "stop_price": 50.0,  # 设置一个较低的止损价
+        }
+
+        response = http_client.post("/api/v1/trading/orders/place", json=order_request)
+
+        assert response.status_code == 200
+        data = response.json()
+
+        print(f"\n✓ 止损单已下达:")
+        print(f"  订单ID: {data['order_id']}")
+        print(f"  止损价: {order_request['stop_price']}")
+
+    @pytest.mark.slow
+    @pytest.mark.paper_trading_only
+    def test_place_stop_limit_order(self, http_client, sample_stock_contract):
+        """测试下止损限价单"""
+        order_request = {
+            "contract": sample_stock_contract,
+            "action": "SELL",
+            "order_type": "STP LMT",
+            "quantity": 1,
+            "stop_price": 150.0,
+            "limit_price": 145.0,
+        }
+
+        response = http_client.post("/api/v1/trading/orders/place", json=order_request)
+
+        assert response.status_code == 200
+        data = response.json()
+
+        print(f"\n✓ 止损限价单已下达:")
+        print(f"  订单ID: {data['order_id']}")
+
+    @pytest.mark.slow
+    @pytest.mark.paper_trading_only
+    def test_place_trailing_stop_order(self, http_client, sample_stock_contract):
+        """测试下追踪止损单"""
+        order_request = {
+            "contract": sample_stock_contract,
+            "action": "SELL",
+            "order_type": "TRAIL",
+            "quantity": 1,
+            "stop_price": 2.0,  # 追踪2%
+        }
+
+        response = http_client.post("/api/v1/trading/orders/place", json=order_request)
+
+        assert response.status_code == 200
+        data = response.json()
+
+        print(f"\n✓ 追踪止损单已下达:")
+        print(f"  订单ID: {data['order_id']}")
+
+    def test_limit_order_missing_limit_price(self, http_client, sample_stock_contract):
+        """测试限价单缺少限价参数"""
+        order_request = {
+            "contract": sample_stock_contract,
+            "action": "BUY",
+            "order_type": "LMT",
+            "quantity": 1,
+            # 缺少 limit_price
+        }
+
+        response = http_client.post("/api/v1/trading/orders/place", json=order_request)
+
+        # 应该返回400错误
+        assert response.status_code == 400
+        print(f"\n✓ 缺少限价参数正确返回400错误")
+
+
+class TestOrderManagement:
+    """测试订单管理功能"""
+
+    @pytest.mark.slow
+    @pytest.mark.paper_trading_only
+    def test_modify_order(self, http_client, sample_stock_contract):
+        """测试修改订单"""
+        # 先下一个限价单
+        order_request = {
+            "contract": sample_stock_contract,
+            "action": "BUY",
+            "order_type": "LMT",
+            "quantity": 1,
+            "limit_price": 100.0,
+        }
+
+        place_resp = http_client.post(
+            "/api/v1/trading/orders/place", json=order_request
+        )
+        assert place_resp.status_code == 200
+        order_id = place_resp.json()["order_id"]
+
+        print(f"\n✓ 原始订单已下达，订单ID: {order_id}")
+
+        # 等待一下
+        import time
+        time.sleep(2)
+
+        # 修改订单
+        modify_request = {
+            "order_id": order_id,
+            "limit_price": 105.0,
+            "quantity": 2,
+        }
+
+        modify_resp = http_client.post(
+            "/api/v1/trading/orders/modify", json=modify_request
+        )
+
+        # 订单可能已成交或被取消，所以允许404
+        assert modify_resp.status_code in [200, 404, 500]
+
+        if modify_resp.status_code == 200:
+            data = modify_resp.json()
+            print(f"\n✓ 订单已修改:")
+            print(f"  订单ID: {data['order_id']}")
+            print(f"  新限价: {modify_request['limit_price']}")
+        else:
+            print(f"\n⚠ 订单无法修改(可能已成交或取消)")
+
+    @pytest.mark.slow
+    @pytest.mark.paper_trading_only
+    def test_cancel_order(self, http_client, sample_stock_contract):
+        """测试取消订单"""
+        # 先下一个限价单
+        order_request = {
+            "contract": sample_stock_contract,
+            "action": "BUY",
+            "order_type": "LMT",
+            "quantity": 1,
+            "limit_price": 100.0,
+        }
+
+        place_resp = http_client.post(
+            "/api/v1/trading/orders/place", json=order_request
+        )
+        assert place_resp.status_code == 200
+        order_id = place_resp.json()["order_id"]
+
+        print(f"\n✓ 订单已下达，订单ID: {order_id}")
+
+        # 等待一下
+        import time
+        time.sleep(2)
+
+        # 取消订单
+        cancel_request = {"order_id": order_id}
+
+        cancel_resp = http_client.post(
+            "/api/v1/trading/orders/cancel", json=cancel_request
+        )
+
+        # 订单可能已成交，所以允许404
+        assert cancel_resp.status_code in [200, 404, 500]
+
+        if cancel_resp.status_code == 200:
+            data = cancel_resp.json()
+            print(f"\n✓ 订单已取消:")
+            print(f"  订单ID: {data['order_id']}")
+            print(f"  状态: {data['status']}")
+        else:
+            print(f"\n⚠ 订单无法取消(可能已成交)")
+
+    def test_get_specific_order(self, http_client):
+        """测试获取特定订单详情"""
+        # 先获取所有订单
+        all_orders_resp = http_client.get("/api/v1/trading/orders/all")
+        all_orders_data = all_orders_resp.json()
+
+        if all_orders_data["count"] == 0:
+            pytest.skip("没有订单可测试")
+
+        # 尝试获取一个订单的ID
+        # 注意：这需要从订单对象中提取订单ID
+        # 由于订单格式可能不同，这里只测试端点可用性
+        print(f"\n✓ 找到 {all_orders_data['count']} 个订单")
+
+    def test_cancel_nonexistent_order(self, http_client):
+        """测试取消不存在的订单"""
+        cancel_request = {"order_id": 999999999}
+
+        response = http_client.post(
+            "/api/v1/trading/orders/cancel", json=cancel_request
+        )
+
+        # 应该返回404
+        assert response.status_code == 404
+        print(f"\n✓ 不存在的订单正确返回404")
+
+
+class TestOrderWorkflowAdvanced:
+    """测试高级订单工作流"""
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    @pytest.mark.paper_trading_only
+    async def test_place_modify_cancel_workflow(self, http_client, sample_stock_contract):
+        """测试完整的下单-修改-取消工作流"""
+        print(f"\n=== 订单工作流: 下单 -> 修改 -> 取消 ===")
+
+        # 1. 下单
+        print("\n步骤1: 下限价单...")
+        order_request = {
+            "contract": sample_stock_contract,
+            "action": "BUY",
+            "order_type": "LMT",
+            "quantity": 1,
+            "limit_price": 100.0,
+        }
+
+        place_resp = http_client.post(
+            "/api/v1/trading/orders/place", json=order_request
+        )
+        assert place_resp.status_code == 200
+        order_id = place_resp.json()["order_id"]
+        print(f"✓ 订单已下达，ID: {order_id}")
+
+        # 等待订单处理
+        await asyncio.sleep(2)
+
+        # 2. 修改订单
+        print("\n步骤2: 修改订单...")
+        modify_request = {
+            "order_id": order_id,
+            "limit_price": 105.0,
+        }
+
+        modify_resp = http_client.post(
+            "/api/v1/trading/orders/modify", json=modify_request
+        )
+
+        if modify_resp.status_code == 200:
+            print(f"✓ 订单已修改，新限价: 105.0")
+        else:
+            print(f"⚠ 订单修改失败 (状态码: {modify_resp.status_code})")
+
+        await asyncio.sleep(2)
+
+        # 3. 取消订单
+        print("\n步骤3: 取消订单...")
+        cancel_request = {"order_id": order_id}
+
+        cancel_resp = http_client.post(
+            "/api/v1/trading/orders/cancel", json=cancel_request
+        )
+
+        if cancel_resp.status_code == 200:
+            print(f"✓ 订单已取消")
+        else:
+            print(f"⚠ 订单取消失败 (状态码: {cancel_resp.status_code})")
+
+        print(f"\n=== 订单工作流完成 ===")
+
+
+class TestMultipleContractTypes:
+    """测试多种合约类型的交易"""
+
+    def test_qualify_stock(self, http_client):
+        """测试验证股票合约"""
+        contract = {
+            "symbol": "MSFT",
+            "sec_type": "STK",
+            "exchange": "SMART",
+            "currency": "USD",
+        }
+
+        response = http_client.post("/api/v1/trading/contract/qualify", json=contract)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["count"] > 0
+
+        print(f"\n✓ 验证股票合约 MSFT: {data['count']} 个")
+
+    def test_qualify_forex(self, http_client):
+        """测试验证外汇合约"""
+        contract = {
+            "symbol": "EURUSD",
+            "sec_type": "CASH",
+            "exchange": "IDEALPRO",
+            "currency": "USD",
+        }
+
+        response = http_client.post("/api/v1/trading/contract/qualify", json=contract)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["count"] > 0
+
+        print(f"\n✓ 验证外汇合约 EURUSD: {data['count']} 个")

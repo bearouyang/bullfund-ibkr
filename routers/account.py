@@ -1,6 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from typing import Optional
 import logging
+import asyncio
+import math
 
 from fastapi import Request
 
@@ -164,3 +166,127 @@ async def get_portfolio(request: Request, account: Optional[str] = None):
     except Exception as e:
         logger.error(f"Error getting portfolio: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/pnl")
+async def get_pnl(
+    request: Request, account: Optional[str] = None, model_code: Optional[str] = None
+):
+    """Get real-time PnL for account."""
+    try:
+        ib = request.app.state.ib
+
+        if account is None:
+            accounts = ib.managedAccounts()
+            if not accounts:
+                raise HTTPException(status_code=404, detail="No accounts found")
+            account = accounts[0]
+
+        # Cancel any existing PnL subscription for this account
+        # to avoid "key already exists" assertion error
+        for pnl_obj in ib.pnl():
+            if pnl_obj.account == account and pnl_obj.modelCode == (model_code or ""):
+                ib.cancelPnL(account, modelCode=model_code or "")
+                break
+
+        # Request PnL
+        pnl = ib.reqPnL(account, modelCode=model_code or "")
+
+        # Wait a bit for data to populate
+        await asyncio.sleep(1)
+
+        # Helper function to handle NaN and None values
+        def safe_float(value, default=0.0):
+            if value is None or (isinstance(value, float) and math.isnan(value)):
+                return default
+            return float(value)
+
+        return {
+            "account": account,
+            "daily_pnl": safe_float(pnl.dailyPnL),
+            "unrealized_pnl": safe_float(pnl.unrealizedPnL),
+            "realized_pnl": safe_float(pnl.realizedPnL),
+        }
+    except Exception as e:
+        logger.error(f"Error getting PnL: {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=str(e) if str(e) else f"{type(e).__name__} occurred"
+        )
+
+
+@router.get("/pnl/single")
+async def get_single_pnl(
+    request: Request,
+    account: Optional[str] = None,
+    model_code: Optional[str] = None,
+    con_id: Optional[int] = None,
+):
+    """Get real-time PnL for a single position."""
+    try:
+        ib = request.app.state.ib
+
+        if account is None:
+            accounts = ib.managedAccounts()
+            if not accounts:
+                raise HTTPException(status_code=404, detail="No accounts found")
+            account = accounts[0]
+
+        if con_id is None:
+            raise HTTPException(status_code=400, detail="con_id is required")
+
+        # Request single PnL
+        pnl_single = ib.reqPnLSingle(account, modelCode=model_code or "", conId=con_id)
+
+        # Wait a bit for data to populate
+        await asyncio.sleep(1)
+
+        # Helper function to handle NaN and None values
+        def safe_float(value, default=0.0):
+            if value is None or (isinstance(value, float) and math.isnan(value)):
+                return default
+            return float(value)
+
+        return {
+            "account": account,
+            "con_id": con_id,
+            "position": safe_float(pnl_single.position),
+            "daily_pnl": safe_float(pnl_single.dailyPnL),
+            "unrealized_pnl": safe_float(pnl_single.unrealizedPnL),
+            "realized_pnl": safe_float(pnl_single.realizedPnL),
+            "value": safe_float(pnl_single.value),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting single PnL: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.websocket("/stream/pnl/{account}")
+async def stream_pnl(websocket: WebSocket, account: str, request: Request):
+    """WebSocket endpoint for streaming real-time PnL updates."""
+    await websocket.accept()
+
+    try:
+        ib = request.app.state.ib
+        pnl = ib.reqPnL(account, modelCode="")
+
+        try:
+            while True:
+                data = {
+                    "account": account,
+                    "daily_pnl": pnl.dailyPnL,
+                    "unrealized_pnl": pnl.unrealizedPnL,
+                    "realized_pnl": pnl.realizedPnL,
+                }
+                await websocket.send_json(data)
+                await asyncio.sleep(1)  # Update every second
+
+        except WebSocketDisconnect:
+            logger.info(f"PnL WebSocket disconnected for {account}")
+        finally:
+            ib.cancelPnL(pnl)
+    except Exception as e:
+        logger.error(f"PnL WebSocket error for {account}: {e}")
+        await websocket.send_json({"error": str(e)})
+        await websocket.close()

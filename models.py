@@ -7,6 +7,10 @@ class OrderAction(str, Enum):
     BUY = "BUY"
     SELL = "SELL"
 
+class OptionRight(str, Enum):
+    CALL = "C"
+    PUT = "P"
+
 class OrderType(str, Enum):
     MARKET = "MKT"
     LIMIT = "LMT"
@@ -43,6 +47,8 @@ class ContractRequest(BaseModel):
     right: Optional[str] = None  # "C" or "P" for options
     multiplier: Optional[str] = None
     primary_exchange: Optional[str] = None
+    local_symbol: Optional[str] = None
+    con_id: Optional[int] = None
 
 # Order Models
 class OrderRequest(BaseModel):
