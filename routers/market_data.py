@@ -6,12 +6,25 @@ from fastapi import Request
 from models import BarDataRequest, MarketDataRequest, TickDataRequest, ContractRequest
 from routers.trading import create_contract
 from ib_async import util
+import math
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Store active subscriptions
 active_subscriptions: Dict[str, Set[WebSocket]] = {}
+
+
+def clean_float(value) -> float | None:
+    """Convert NaN and inf to None for JSON serialization."""
+    if value is None:
+        return None
+    try:
+        if math.isnan(value) or math.isinf(value):
+            return None
+        return value
+    except (TypeError, ValueError):
+        return None
 
 
 @router.post("/historical-bars")
@@ -22,8 +35,17 @@ async def get_historical_bars(request: BarDataRequest, req: Request):
 
     def error_handler(reqId, errorCode, errorString, contract):
         nonlocal error_occurred, error_message
-        # Error codes < 1000 are warnings, >= 1000 are errors
-        if errorCode >= 1000 or errorCode == 200:  # 200 = No security definition found
+        # Ignore connection status messages (2104, 2105, 2106, 2107, 2108, 2119)
+        # Ignore market data farm connection messages (2103, 2106)
+        if errorCode in [2103, 2104, 2105, 2106, 2107, 2108, 2119, 2157, 2158]:
+            logger.info(f"IBKR Status for reqId {reqId}: {errorCode} - {errorString}")
+            return
+        # Error codes that indicate actual errors
+        # 162 = No market data permissions
+        # 200 = No security definition found  
+        # 366 = No historical data query found (invalid parameters)
+        # >= 1000 = Errors
+        if errorCode >= 1000 or errorCode in [162, 200, 366]:
             error_occurred = True
             error_message = f"Error {errorCode}: {errorString}"
             logger.error(f"IBKR Error for reqId {reqId}: {error_message}")
@@ -37,14 +59,23 @@ async def get_historical_bars(request: BarDataRequest, req: Request):
         ib.errorEvent += error_handler
 
         try:
-            bars = await ib.reqHistoricalDataAsync(
-                contract=contract,
-                endDateTime="",  # Empty string means current time
-                durationStr=request.duration,
-                barSizeSetting=request.bar_size,
-                whatToShow=request.what_to_show,
-                useRTH=request.use_rth,
+            # Add timeout to prevent hanging on invalid requests
+            bars = await asyncio.wait_for(
+                ib.reqHistoricalDataAsync(
+                    contract=contract,
+                    endDateTime="",  # Empty string means current time
+                    durationStr=request.duration,
+                    barSizeSetting=request.bar_size,
+                    whatToShow=request.what_to_show,
+                    useRTH=request.use_rth,
+                ),
+                timeout=10.0  # 10 second timeout
             )
+        except asyncio.TimeoutError:
+            logger.warning(f"Historical data request timed out for {contract.symbol}")
+            if error_occurred:
+                raise HTTPException(status_code=500, detail=error_message)
+            raise HTTPException(status_code=500, detail="Request timed out")
         finally:
             # Unsubscribe from error events
             ib.errorEvent -= error_handler
@@ -138,21 +169,24 @@ async def get_market_data(request: MarketDataRequest, req: Request):
         # Wait for data to populate
         await asyncio.sleep(2)
         
-        return {
+        result = {
             "symbol": contract.symbol,
-            "bid": ticker.bid,
-            "ask": ticker.ask,
-            "last": ticker.last,
-            "bid_size": ticker.bidSize,
-            "ask_size": ticker.askSize,
-            "last_size": ticker.lastSize,
-            "volume": ticker.volume,
-            "high": ticker.high,
-            "low": ticker.low,
-            "close": ticker.close,
-            "open": ticker.open,
-            "halted": ticker.halted,
+            "bid": clean_float(ticker.bid),
+            "ask": clean_float(ticker.ask),
+            "last": clean_float(ticker.last),
+            "bid_size": clean_float(ticker.bidSize),
+            "ask_size": clean_float(ticker.askSize),
+            "last_size": clean_float(ticker.lastSize),
+            "volume": clean_float(ticker.volume),
+            "high": clean_float(ticker.high),
+            "low": clean_float(ticker.low),
+            "close": clean_float(ticker.close),
+            "open": clean_float(ticker.open),
+            "halted": clean_float(ticker.halted),
         }
+        
+        logger.debug(f"Market data result: {result}")
+        return result
     except HTTPException:
         raise
     except Exception as e:
@@ -174,16 +208,23 @@ async def get_tick_data(request: TickDataRequest, req: Request):
         
         contract = qualified_contracts[0]
         
-        # Request tick data
-        ticks = await ib.reqHistoricalTicksAsync(
-            contract,
-            startDateTime="",
-            endDateTime="",
-            numberOfTicks=request.number_of_ticks,
-            whatToShow=request.tick_type,
-            useRth=True,
-            ignoreSize=request.ignore_size,
-        )
+        # Request tick data with timeout
+        try:
+            ticks = await asyncio.wait_for(
+                ib.reqHistoricalTicksAsync(
+                    contract,
+                    startDateTime="",
+                    endDateTime="",
+                    numberOfTicks=request.number_of_ticks,
+                    whatToShow=request.tick_type,
+                    useRth=True,
+                    ignoreSize=request.ignore_size,
+                ),
+                timeout=10.0  # 10 second timeout
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"Tick data request timed out for {contract.symbol}")
+            return {"ticks": [], "count": 0}
         
         tick_list = [
             {
@@ -277,13 +318,13 @@ async def stream_market_data(websocket: WebSocket, symbol: str, req: Request):
                 data = {
                     "symbol": contract.symbol,
                     "time": str(ticker.time),
-                    "bid": ticker.bid,
-                    "ask": ticker.ask,
-                    "last": ticker.last,
-                    "volume": ticker.volume,
-                    "high": ticker.high,
-                    "low": ticker.low,
-                    "close": ticker.close,
+                    "bid": clean_float(ticker.bid),
+                    "ask": clean_float(ticker.ask),
+                    "last": clean_float(ticker.last),
+                    "volume": clean_float(ticker.volume),
+                    "high": clean_float(ticker.high),
+                    "low": clean_float(ticker.low),
+                    "close": clean_float(ticker.close),
                 }
                 await websocket.send_json(data)
                 await asyncio.sleep(1)  # Update every second

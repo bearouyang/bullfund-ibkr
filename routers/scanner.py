@@ -38,6 +38,14 @@ async def run_scanner(request: ScannerRequest, req: Request):
         # Request scanner data
         scan_data = await ib.reqScannerDataAsync(sub)
         
+        # Check if we got an empty result which might indicate an error
+        # IB API sometimes returns empty list for invalid parameters instead of raising
+        if scan_data is None or len(scan_data) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Scanner request failed - invalid parameters or no results"
+            )
+        
         results = [
             {
                 "rank": item.rank,
