@@ -577,6 +577,34 @@ class TestMarketData:
         assert "symbol" in data
         print(f"\n✓ 获取 {sample_stock_contract['symbol']} 流式市场数据")
 
+    def test_websocket_stream_market_data(self, http_client, sample_stock_contract):
+        """测试WebSocket实时市场数据流(事件驱动)"""
+        symbol = sample_stock_contract["symbol"]
+        ws_path = f"/api/v1/market-data/stream/market-data/{symbol}"
+
+        # 连接WebSocket并接收若干条消息
+        with http_client.websocket_connect(ws_path) as ws:
+            # 接收最多5条消息，至少应收到1条
+            received = []
+            for _ in range(5):
+                msg = ws.receive_json()
+                received.append(msg)
+                # 验证基本字段存在
+                assert msg.get("symbol") == symbol
+                for key in ["bid", "ask", "last", "high", "low", "close", "volume"]:
+                    assert key in msg
+            assert len(received) >= 1
+            print(f"\n✓ WebSocket接收 {symbol} 实时数据 {len(received)} 条")
+
+    def test_websocket_invalid_symbol(self, http_client):
+        """测试WebSocket对无效合约的错误返回"""
+        ws_path = "/api/v1/market-data/stream/market-data/INVALIDXYZ123"
+        with http_client.websocket_connect(ws_path) as ws:
+            # 期望服务端返回错误并可能随即关闭
+            msg = ws.receive_json()
+            assert "error" in msg
+            print(f"\n✓ WebSocket无效合约返回错误: {msg['error']}")
+
 
 class TestTickData:
     """测试Tick数据端点"""

@@ -3,6 +3,7 @@ import logging
 from fastapi import Request
 from models import ContractRequest, FundamentalDataRequest, NewsRequest
 from routers.trading import create_contract
+import asyncio
 from typing import Optional
 
 router = APIRouter()
@@ -189,8 +190,18 @@ async def search_contracts(pattern: str, req: Request):
     """Search for contracts by pattern (symbol search)."""
     try:
         ib = req.app.state.ib
+        try:
+            matches = await asyncio.wait_for(
+                ib.reqMatchingSymbolsAsync(pattern),
+                timeout=10.0  # 10-second timeout
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"Contract search timed out for pattern: {pattern}")
+            raise HTTPException(status_code=504, detail="Contract search timed out")
 
-        matches = await ib.reqMatchingSymbolsAsync(pattern)
+        if not matches:
+            logger.warning(f"No contracts found for pattern: {pattern}")
+            return {"matches": [], "count": 0}
 
         contract_list = [
             {
@@ -207,9 +218,12 @@ async def search_contracts(pattern: str, req: Request):
         ]
 
         return {"matches": contract_list, "count": len(contract_list)}
+    except HTTPException as e:
+        # Re-raise HTTP exceptions to avoid them being caught as general exceptions
+        raise e
     except Exception as e:
-        logger.error(f"Error searching contracts: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error searching contracts for pattern '{pattern}': {e}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred while searching for contracts: {e}")
 
 
 @router.post("/histogram")
