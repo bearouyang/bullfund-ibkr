@@ -320,12 +320,12 @@ async def get_market_depth(contract_req: MarketDataRequest, req: Request):
 
 
 @router.websocket("/stream/market-data/{symbol}")
-async def stream_market_data(websocket: WebSocket, symbol: str, req: Request):
+async def stream_market_data(websocket: WebSocket, symbol: str):
     """WebSocket endpoint for streaming real-time market data (event-driven)."""
     await websocket.accept()
 
     try:
-        ib = req.app.state.ib
+        ib = websocket.app.state.ib
         contract = create_contract(ContractRequest(symbol=symbol))
 
         # Qualify the contract
