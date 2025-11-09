@@ -25,6 +25,7 @@ class SecType(str, Enum):
     OPTION = "OPT"
     FUTURE = "FUT"
     FOREX = "CASH"
+    CASH = "CASH"  # Alias for FOREX
     INDEX = "IND"
     CFD = "CFD"
     COMMODITY = "CMDTY"
