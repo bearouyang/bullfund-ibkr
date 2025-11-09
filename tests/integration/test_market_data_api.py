@@ -579,6 +579,20 @@ class TestMarketData:
 
     def test_websocket_stream_market_data(self, http_client, sample_stock_contract):
         """测试WebSocket实时市场数据流(事件驱动)"""
+        from datetime import datetime
+        import pytz
+
+        # Get the current time in ET
+        et_tz = pytz.timezone("US/Eastern")
+        et_now = datetime.now(et_tz)
+        
+        # Check if it's a weekday and within trading hours
+        is_weekday = et_now.weekday() < 5  # Monday=0, Sunday=6
+        is_trading_hours = et_now.time() >= datetime.strptime("09:30", "%H:%M").time() and et_now.time() <= datetime.strptime("16:00", "%H:%M").time()
+
+        if not (is_weekday and is_trading_hours):
+            pytest.skip("Skipping streaming test outside of US trading hours.")
+
         symbol = sample_stock_contract["symbol"]
         ws_path = f"/api/v1/market-data/stream/market-data/{symbol}"
 
