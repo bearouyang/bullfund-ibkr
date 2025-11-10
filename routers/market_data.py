@@ -1,11 +1,77 @@
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 import logging
 import asyncio
-from typing import Dict, Set
+from typing import Dict, Set, List, Any, Optional
 from fastapi import Request
 from models import BarDataRequest, MarketDataRequest, TickDataRequest, ContractRequest
 from routers.trading import create_contract
 import math
+from pydantic import BaseModel
+
+
+class Bar(BaseModel):
+    date: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+
+class HistoricalBarsResponse(BaseModel):
+    bars: List[Bar]
+    count: int
+
+class RealtimeBar(BaseModel):
+    time: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    wap: float
+    count: int
+
+class RealtimeBarsResponse(BaseModel):
+    bars: List[RealtimeBar]
+    count: int
+
+class MarketDataResponse(BaseModel):
+    symbol: str
+    bid: Optional[float] = None
+    ask: Optional[float] = None
+    last: Optional[float] = None
+    bid_size: Optional[float] = None
+    ask_size: Optional[float] = None
+    last_size: Optional[float] = None
+    volume: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    close: Optional[float] = None
+    open: Optional[float] = None
+    halted: Optional[float] = None
+
+class Tick(BaseModel):
+    time: str
+    price: Optional[float] = None
+    size: Optional[float] = None
+    tickAttribLast: Optional[str] = None
+    exchange: Optional[str] = None
+    specialConditions: Optional[str] = None
+
+class TickDataResponse(BaseModel):
+    ticks: List[Tick]
+    count: int
+    
+class MarketDepthLevel(BaseModel):
+    position: int
+    price: float
+    size: float
+    market_maker: str
+
+class MarketDepthResponse(BaseModel):
+    symbol: str
+    bids: List[MarketDepthLevel]
+    asks: List[MarketDepthLevel]
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -26,7 +92,7 @@ def clean_float(value) -> float | None:
         return None
 
 
-@router.post("/historical-bars")
+@router.post("/historical-bars", response_model=HistoricalBarsResponse)
 async def get_historical_bars(request: BarDataRequest, req: Request):
     """Get historical bar data for a contract."""
     error_occurred = False
@@ -112,7 +178,7 @@ async def get_historical_bars(request: BarDataRequest, req: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/realtime-bars")
+@router.post("/realtime-bars", response_model=RealtimeBarsResponse)
 async def get_realtime_bars(request: BarDataRequest, req: Request):
     """Get real-time 5-second bars for a contract."""
     try:
@@ -149,7 +215,7 @@ async def get_realtime_bars(request: BarDataRequest, req: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/market-data")
+@router.post("/market-data", response_model=MarketDataResponse)
 async def get_market_data(request: MarketDataRequest, req: Request):
     """Get market data snapshot for a contract."""
     try:
@@ -199,7 +265,7 @@ async def get_market_data(request: MarketDataRequest, req: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/tick-data")
+@router.post("/tick-data", response_model=TickDataResponse)
 async def get_tick_data(request: TickDataRequest, req: Request):
     """Get historical tick data for a contract."""
     try:
@@ -259,7 +325,7 @@ async def get_tick_data(request: TickDataRequest, req: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/market-depth")
+@router.post("/market-depth", response_model=MarketDepthResponse)
 async def get_market_depth(contract_req: MarketDataRequest, req: Request):
     """Get market depth (Level 2) data for a contract."""
     try:

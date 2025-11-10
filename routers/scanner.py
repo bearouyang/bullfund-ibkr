@@ -3,12 +3,38 @@ import logging
 from fastapi import Request
 from models import ScannerRequest
 from ib_async import ScannerSubscription
+from typing import List, Dict, Any
+from pydantic import BaseModel
+
+
+class ScannerResultContract(BaseModel):
+    con_id: int
+    symbol: str
+    sec_type: str
+    exchange: str
+    currency: str
+    local_symbol: str
+
+class ScannerResult(BaseModel):
+    rank: int
+    contract: ScannerResultContract
+    distance: str
+    benchmark: str
+    projection: str
+    legs: str
+
+class ScannerResponse(BaseModel):
+    results: List[ScannerResult]
+    count: int
+
+class ScannerParametersResponse(BaseModel):
+    parameters: str
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.post("/scan")
+@router.post("/scan", response_model=ScannerResponse)
 async def run_scanner(request: ScannerRequest, req: Request):
     """Run a market scanner to find contracts matching criteria."""
     try:
@@ -71,7 +97,7 @@ async def run_scanner(request: ScannerRequest, req: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/scanner-parameters")
+@router.get("/scanner-parameters", response_model=ScannerParametersResponse)
 async def get_scanner_parameters(req: Request):
     """Get available scanner parameters."""
     try:

@@ -1,0 +1,67 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Scanner API",
+        "version": "0.1.0"
+    },
+    "paths": {
+        "/api/v1/scanner/scan": {
+            "post": {
+                "summary": "Run Scanner",
+                "description": "Run a market scanner to find contracts matching criteria.",
+                "operationId": "run_scanner_api_v1_scanner_scan_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ScannerRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ScannerResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/scanner/scanner-parameters": {
+            "get": {
+                "summary": "Get Scanner Parameters",
+                "description": "Get available scanner parameters.",
+                "operationId": "get_scanner_parameters_api_v1_scanner_scanner_parameters_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ScannerParametersResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

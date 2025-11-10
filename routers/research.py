@@ -4,13 +4,88 @@ from fastapi import Request
 from models import ContractRequest, FundamentalDataRequest, NewsRequest
 from routers.trading import create_contract
 import asyncio
-from typing import Optional
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel
+
+
+class ContractDetailsResponse(BaseModel):
+    details: List[Any]
+    count: int
+
+class FundamentalDataResponse(BaseModel):
+    symbol: str
+    report_type: str
+    data: Any  # Can be string or empty list
+
+class NewsArticle(BaseModel):
+    time: str
+    provider_code: str
+    article_id: str
+    headline: str
+
+class HistoricalNewsResponse(BaseModel):
+    articles: List[NewsArticle]
+    count: int
+    
+class NewsArticleResponse(BaseModel):
+    provider_code: str
+    article_id: str
+    article_type: int
+    article_text: str
+
+class NewsProvider(BaseModel):
+    code: str
+    name: str
+
+class NewsProvidersResponse(BaseModel):
+    providers: List[NewsProvider]
+    count: int
+
+class OptionChain(BaseModel):
+    exchange: str
+    underlying_con_id: int
+    trading_class: str
+    multiplier: str
+    expirations: List[str]
+    strikes: List[float]
+    
+class OptionChainResponse(BaseModel):
+    chains: List[OptionChain]
+    count: int
+
+class ContractMatch(BaseModel):
+    con_id: int
+    symbol: str
+    sec_type: str
+    primary_exchange: str
+    currency: str
+
+class SearchResult(BaseModel):
+    contract: ContractMatch
+    derivative_sec_types: List[str]
+
+class SearchContractsResponse(BaseModel):
+    matches: List[SearchResult]
+    count: int
+
+class HistogramData(BaseModel):
+    price: float
+    count: int
+    
+class HistogramResponse(BaseModel):
+    histogram: List[HistogramData]
+    count: int
+
+class DividendsResponse(BaseModel):
+    symbol: str
+    dividends: Any  # Can be string or empty list
+
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.post("/contract-details")
+@router.post("/contract-details", response_model=ContractDetailsResponse)
 async def get_contract_details(contract_req: ContractRequest, request: Request):
     """Get detailed contract information using the thread-safe sync wrapper."""
     try:
@@ -31,7 +106,7 @@ async def get_contract_details(contract_req: ContractRequest, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/fundamental-data")
+@router.post("/fundamental-data", response_model=FundamentalDataResponse)
 async def get_fundamental_data(request: FundamentalDataRequest, req: Request):
     """Get fundamental data for a contract."""
     try:
@@ -62,7 +137,7 @@ async def get_fundamental_data(request: FundamentalDataRequest, req: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/news/historical")
+@router.post("/news/historical", response_model=HistoricalNewsResponse)
 async def get_historical_news(request: NewsRequest, req: Request):
     """Get historical news articles."""
     try:
@@ -105,7 +180,7 @@ async def get_historical_news(request: NewsRequest, req: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/news/article/{provider_code}/{article_id}")
+@router.get("/news/article/{provider_code}/{article_id}", response_model=NewsArticleResponse)
 async def get_news_article(provider_code: str, article_id: str, req: Request):
     """Get a specific news article by provider code and article ID."""
     try:
@@ -126,7 +201,7 @@ async def get_news_article(provider_code: str, article_id: str, req: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/news/providers")
+@router.get("/news/providers", response_model=NewsProvidersResponse)
 async def get_news_providers(req: Request):
     """Get available news providers."""
     try:
@@ -143,7 +218,7 @@ async def get_news_providers(req: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/option-chain")
+@router.post("/option-chain", response_model=OptionChainResponse)
 async def get_option_chain(contract_req: ContractRequest, req: Request):
     """Get option chain parameters for a contract."""
     try:
@@ -185,7 +260,7 @@ async def get_option_chain(contract_req: ContractRequest, req: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/search/{pattern}")
+@router.get("/search/{pattern}", response_model=SearchContractsResponse)
 async def search_contracts(pattern: str, req: Request):
     """Search for contracts by pattern (symbol search)."""
     try:
@@ -226,7 +301,7 @@ async def search_contracts(pattern: str, req: Request):
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred while searching for contracts: {e}")
 
 
-@router.post("/histogram")
+@router.post("/histogram", response_model=HistogramResponse)
 async def get_histogram_data(
     contract_req: ContractRequest,
     req: Request,
@@ -262,7 +337,7 @@ async def get_histogram_data(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/dividends")
+@router.post("/dividends", response_model=DividendsResponse)
 async def get_dividends(
     contract_req: ContractRequest,
     req: Request,

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 import logging
+from typing import List, Dict, Any
 
 from ib_async import (
     Stock,
@@ -17,7 +18,68 @@ from ib_async import (
 )
 
 from fastapi import Request
-from models import ContractRequest, OrderRequest, OrderModifyRequest, OrderCancelRequest, SecType, OrderType
+from models import (
+    ContractRequest,
+    OrderRequest,
+    OrderModifyRequest,
+    OrderCancelRequest,
+    SecType,
+    OrderType,
+    OrderResponse,
+    ExecutionResponse,
+    ConnectionStatus
+)
+from pydantic import BaseModel
+
+
+class QualifiedContract(BaseModel):
+    conId: int
+    symbol: str
+    secType: str
+    primaryExchange: str
+    currency: str
+    
+class QualifiedContractsResponse(BaseModel):
+    contracts: List[QualifiedContract]
+    count: int
+
+class PlaceOrderResponse(BaseModel):
+    order_id: int
+    status: str
+    perm_id: int
+
+class OpenOrdersResponse(BaseModel):
+    orders: List[Any]  # Trade objects from ib_async
+    count: int
+
+class AllOrdersResponse(BaseModel):
+    orders: List[Any]  # Trade objects from ib_async
+    count: int
+
+class ExecutionsResponse(BaseModel):
+    executions: List[Any]  # Fill objects from ib_async
+    count: int
+
+class ModifyOrderResponse(BaseModel):
+    order_id: int
+    status: str
+    
+class CancelOrderResponse(BaseModel):
+    order_id: int
+    status: str
+
+class CancelAllOrdersResponse(BaseModel):
+    status: str
+
+class GetOrderResponse(BaseModel):
+    order_id: int
+    perm_id: int
+    status: str
+    filled: float
+    remaining: float
+    avg_fill_price: float
+    contract: Dict[str, Any]
+    order: Dict[str, Any]
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -115,7 +177,7 @@ def create_order(order_req: OrderRequest):
     return order
 
 
-@router.post("/orders/place")
+@router.post("/orders/place", response_model=PlaceOrderResponse)
 async def place_order(order_req: OrderRequest, request: Request):
     """Place an order."""
     try:
@@ -144,28 +206,28 @@ async def place_order(order_req: OrderRequest, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/orders/open")
+@router.get("/orders/open", response_model=OpenOrdersResponse)
 async def get_open_orders(request: Request):
     ib = request.app.state.ib
     trades = ib.openTrades()
     return {"orders": trades, "count": len(trades)}
 
 
-@router.get("/orders/all")
+@router.get("/orders/all", response_model=AllOrdersResponse)
 async def get_all_orders(request: Request):
     ib = request.app.state.ib
     trades = ib.trades()
     return {"orders": trades, "count": len(trades)}
 
 
-@router.get("/executions")
+@router.get("/executions", response_model=ExecutionsResponse)
 async def get_executions(request: Request):
     ib = request.app.state.ib
     fills = ib.fills()
     return {"executions": fills, "count": len(fills)}
 
 
-@router.post("/contract/qualify")
+@router.post("/contract/qualify", response_model=QualifiedContractsResponse)
 async def qualify_contract(contract_req: ContractRequest, request: Request):
     try:
         ib = request.app.state.ib
@@ -183,7 +245,7 @@ async def qualify_contract(contract_req: ContractRequest, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/orders/modify")
+@router.post("/orders/modify", response_model=ModifyOrderResponse)
 async def modify_order(modify_req: OrderModifyRequest, request: Request):
     """Modify an existing order."""
     try:
@@ -221,7 +283,7 @@ async def modify_order(modify_req: OrderModifyRequest, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/orders/cancel")
+@router.post("/orders/cancel", response_model=CancelOrderResponse)
 async def cancel_order(cancel_req: OrderCancelRequest, request: Request):
     """Cancel an order."""
     try:
@@ -251,7 +313,7 @@ async def cancel_order(cancel_req: OrderCancelRequest, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/orders/cancel-all")
+@router.post("/orders/cancel-all", response_model=CancelAllOrdersResponse)
 async def cancel_all_orders(request: Request):
     """Cancel all open orders."""
     try:
@@ -264,7 +326,7 @@ async def cancel_all_orders(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/orders/{order_id}")
+@router.get("/orders/{order_id}", response_model=GetOrderResponse)
 async def get_order(order_id: int, request: Request):
     """Get details of a specific order."""
     try:

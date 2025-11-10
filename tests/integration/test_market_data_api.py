@@ -123,7 +123,7 @@ class TestHistoricalBars:
             print(f"\n⚠ 外汇数据不可用(可能需要市场数据订阅)")
             print(f"  注意: 这不是代码错误,而是账户权限限制")
             return
-            
+
         assert response.status_code == 200
         data = response.json()
 
@@ -585,10 +585,13 @@ class TestMarketData:
         # Get the current time in ET
         et_tz = pytz.timezone("US/Eastern")
         et_now = datetime.now(et_tz)
-        
+
         # Check if it's a weekday and within trading hours
         is_weekday = et_now.weekday() < 5  # Monday=0, Sunday=6
-        is_trading_hours = et_now.time() >= datetime.strptime("09:30", "%H:%M").time() and et_now.time() <= datetime.strptime("16:00", "%H:%M").time()
+        is_trading_hours = (
+            et_now.time() >= datetime.strptime("09:30", "%H:%M").time()
+            and et_now.time() <= datetime.strptime("16:00", "%H:%M").time()
+        )
 
         if not (is_weekday and is_trading_hours):
             pytest.skip("Skipping streaming test outside of US trading hours.")
@@ -632,9 +635,7 @@ class TestTickData:
             "ignore_size": False,
         }
 
-        response = http_client.post(
-            "/api/v1/market-data/tick-data", json=request_data
-        )
+        response = http_client.post("/api/v1/market-data/tick-data", json=request_data)
 
         assert response.status_code == 200
         data = response.json()
@@ -644,7 +645,9 @@ class TestTickData:
         assert "count" in data
         assert isinstance(data["ticks"], list)
 
-        print(f"\n✓ 获取 {sample_stock_contract['symbol']} Tick数据: {data['count']} 条")
+        print(
+            f"\n✓ 获取 {sample_stock_contract['symbol']} Tick数据: {data['count']} 条"
+        )
 
         # 如果有数据，验证tick结构
         if data["count"] > 0:
@@ -664,16 +667,14 @@ class TestTickData:
             "number_of_ticks": 50,
         }
 
-        response = http_client.post(
-            "/api/v1/market-data/tick-data", json=request_data
-        )
+        response = http_client.post("/api/v1/market-data/tick-data", json=request_data)
 
         assert response.status_code == 200
         data = response.json()
 
         assert "ticks" in data
         print(f"\n✓ 获取买卖价Tick数据: {data['count']} 条")
-        
+
         if data["count"] == 0:
             print(f"  ⚠ Tick数据不可用或超时")
 

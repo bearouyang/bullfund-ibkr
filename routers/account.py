@@ -1,16 +1,85 @@
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
-from typing import Optional
+from typing import Optional, List, Dict
 import logging
 import asyncio
 import math
+from pydantic import BaseModel, Field
 
 from fastapi import Request
+
+# Pydantic Models for Response Bodies
+
+class ManagedAccountsResponse(BaseModel):
+    accounts: List[str]
+    count: int
+
+class AccountValue(BaseModel):
+    value: str
+    currency: str
+    account: str
+
+class AccountSummaryResponse(BaseModel):
+    account: str
+    summary: Dict[str, AccountValue]
+
+class AccountValuesResponse(BaseModel):
+    account: str
+    values: Dict[str, List[AccountValue]]
+
+class Contract(BaseModel):
+    symbol: str
+    sec_type: str 
+    exchange: str
+    currency: str
+    local_symbol: str 
+    con_id: int 
+
+
+class Position(BaseModel):
+    account: str
+    contract: Contract
+    position: float
+    avg_cost: float 
+
+class PositionsResponse(BaseModel):
+    positions: List[Position]
+    count: int
+
+class PortfolioItem(BaseModel):
+    account: str
+    contract: Contract
+    position: float
+    market_price: float 
+    market_value: float 
+    average_cost: float 
+    unrealized_pnl: float 
+    realized_pnl: float 
+
+class PortfolioResponse(BaseModel):
+    portfolio: List[PortfolioItem]
+    count: int
+
+class PnlResponse(BaseModel):
+    account: str
+    daily_pnl: float 
+    unrealized_pnl: float 
+    realized_pnl: float 
+
+class SinglePnlResponse(BaseModel):
+    account: str
+    con_id: int
+    position: float
+    daily_pnl: float 
+    unrealized_pnl: float 
+    realized_pnl: float 
+    value: float
+
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.get("/managed-accounts")
+@router.get("/managed-accounts", response_model=ManagedAccountsResponse)
 async def get_managed_accounts(request: Request):
     """Get list of managed accounts"""
     try:
@@ -22,7 +91,7 @@ async def get_managed_accounts(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/summary")
+@router.get("/summary", response_model=AccountSummaryResponse)
 async def get_account_summary(request: Request, account: Optional[str] = None):
     """Get account summary with key metrics"""
     try:
@@ -72,7 +141,7 @@ async def get_account_summary(request: Request, account: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/values")
+@router.get("/values", response_model=AccountValuesResponse)
 async def get_account_values(request: Request, account: Optional[str] = None):
     """Get detailed account values"""
     try:
@@ -98,7 +167,7 @@ async def get_account_values(request: Request, account: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/positions")
+@router.get("/positions", response_model=PositionsResponse)
 async def get_positions(request: Request, account: Optional[str] = None):
     """Get current portfolio positions"""
     try:
@@ -131,7 +200,7 @@ async def get_positions(request: Request, account: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/portfolio")
+@router.get("/portfolio", response_model=PortfolioResponse)
 async def get_portfolio(request: Request, account: Optional[str] = None):
     """Get portfolio items with P&L information"""
     try:
@@ -168,7 +237,7 @@ async def get_portfolio(request: Request, account: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/pnl")
+@router.get("/pnl", response_model=PnlResponse)
 async def get_pnl(
     request: Request, account: Optional[str] = None, model_code: Optional[str] = None
 ):
@@ -214,7 +283,7 @@ async def get_pnl(
         )
 
 
-@router.get("/pnl/single")
+@router.get("/pnl/single", response_model=SinglePnlResponse)
 async def get_single_pnl(
     request: Request,
     account: Optional[str] = None,
