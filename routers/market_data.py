@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 import logging
 import asyncio
-from typing import Dict, Set, List, Any, Optional
+from typing import Dict, Set, List, Optional
 from fastapi import Request
 from models import BarDataRequest, MarketDataRequest, TickDataRequest, ContractRequest
 from routers.trading import create_contract
@@ -17,9 +17,11 @@ class Bar(BaseModel):
     close: float
     volume: float
 
+
 class HistoricalBarsResponse(BaseModel):
     bars: List[Bar]
     count: int
+
 
 class RealtimeBar(BaseModel):
     time: str
@@ -31,9 +33,11 @@ class RealtimeBar(BaseModel):
     wap: float
     count: int
 
+
 class RealtimeBarsResponse(BaseModel):
     bars: List[RealtimeBar]
     count: int
+
 
 class MarketDataResponse(BaseModel):
     symbol: str
@@ -50,6 +54,7 @@ class MarketDataResponse(BaseModel):
     open: Optional[float] = None
     halted: Optional[float] = None
 
+
 class Tick(BaseModel):
     time: str
     price: Optional[float] = None
@@ -58,20 +63,24 @@ class Tick(BaseModel):
     exchange: Optional[str] = None
     specialConditions: Optional[str] = None
 
+
 class TickDataResponse(BaseModel):
     ticks: List[Tick]
     count: int
-    
+
+
 class MarketDepthLevel(BaseModel):
     position: int
     price: float
     size: float
     market_maker: str
 
+
 class MarketDepthResponse(BaseModel):
     symbol: str
     bids: List[MarketDepthLevel]
     asks: List[MarketDepthLevel]
+
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -185,6 +194,13 @@ async def get_realtime_bars(request: BarDataRequest, req: Request):
         contract = create_contract(request.contract)
         ib = req.app.state.ib
 
+        # Qualify the contract first
+        qualified_contracts = await ib.qualifyContractsAsync(contract)
+        if not qualified_contracts:
+            raise HTTPException(status_code=404, detail="Contract not found")
+
+        contract = qualified_contracts[0]
+
         bars = ib.reqRealTimeBars(
             contract=contract,
             barSize=5,  # Only 5 seconds is supported
@@ -192,8 +208,14 @@ async def get_realtime_bars(request: BarDataRequest, req: Request):
             useRTH=request.use_rth,
         )
 
-        # Wait a bit to get some bars
-        await asyncio.sleep(2)
+        # Wait for bars to populate using event-driven pattern
+        try:
+            await asyncio.wait_for(bars.updateEvent, timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.warning(f"Real-time bars request timed out for {contract.symbol}")
+            raise HTTPException(
+                status_code=504, detail="Request timed out waiting for real-time bars"
+            )
 
         bar_list = [
             {
@@ -210,6 +232,8 @@ async def get_realtime_bars(request: BarDataRequest, req: Request):
         ]
 
         return {"bars": bar_list, "count": len(bar_list)}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting real-time bars: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -229,7 +253,7 @@ async def get_market_data(request: MarketDataRequest, req: Request):
 
         contract = qualified_contracts[0]
 
-        # Request market data
+        # Request market data snapshot
         ticker = ib.reqMktData(
             contract,
             genericTickList=request.generic_tick_list,
@@ -237,8 +261,16 @@ async def get_market_data(request: MarketDataRequest, req: Request):
             regulatorySnapshot=request.regulatory_snapshot,
         )
 
-        # Wait for data to populate
-        await asyncio.sleep(2)
+        # Wait for ticker to be populated using event-driven pattern
+        try:
+            await asyncio.wait_for(ticker.updateEvent, timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"Market data snapshot request timed out for {contract.symbol}"
+            )
+            raise HTTPException(
+                status_code=504, detail="Request timed out waiting for market data"
+            )
 
         result = {
             "symbol": contract.symbol,
@@ -342,8 +374,14 @@ async def get_market_depth(contract_req: MarketDataRequest, req: Request):
         # Request market depth
         ticker = ib.reqMktDepth(contract)
 
-        # Wait for data to populate
-        await asyncio.sleep(2)
+        # Wait for market depth data to populate using event-driven pattern
+        try:
+            await asyncio.wait_for(ticker.updateEvent, timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.warning(f"Market depth request timed out for {contract.symbol}")
+            raise HTTPException(
+                status_code=504, detail="Request timed out waiting for market depth"
+            )
 
         dom_bids = (
             [

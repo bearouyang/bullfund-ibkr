@@ -449,7 +449,9 @@ class TestNewsData:
             assert "articles" in data
             assert "count" in data
 
-            print(f"\n✓ 获取 {sample_stock_contract['symbol']} 历史新闻: {data['count']} 条")
+            print(
+                f"\n✓ 获取 {sample_stock_contract['symbol']} 历史新闻: {data['count']} 条"
+            )
 
             if data["count"] > 0:
                 article = data["articles"][0]
@@ -492,7 +494,9 @@ class TestOptionChain:
             assert "chains" in data
             assert "count" in data
 
-            print(f"\n✓ 获取 {sample_stock_contract['symbol']} 期权链: {data['count']} 个交易类")
+            print(
+                f"\n✓ 获取 {sample_stock_contract['symbol']} 期权链: {data['count']} 个交易类"
+            )
 
             if data["count"] > 0:
                 chain = data["chains"][0]
@@ -625,4 +629,3 @@ class TestMultipleSymbolsResearch:
                 print(f"  ✓ {symbol}: {data['count']} 个结果")
             else:
                 print(f"  ✗ {symbol}: 无结果")
-

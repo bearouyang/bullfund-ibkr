@@ -3,75 +3,85 @@ from typing import Optional, List, Dict
 import logging
 import asyncio
 import math
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from fastapi import Request
 
 # Pydantic Models for Response Bodies
 
+
 class ManagedAccountsResponse(BaseModel):
     accounts: List[str]
     count: int
+
 
 class AccountValue(BaseModel):
     value: str
     currency: str
     account: str
 
+
 class AccountSummaryResponse(BaseModel):
     account: str
     summary: Dict[str, AccountValue]
+
 
 class AccountValuesResponse(BaseModel):
     account: str
     values: Dict[str, List[AccountValue]]
 
+
 class Contract(BaseModel):
     symbol: str
-    sec_type: str 
+    sec_type: str
     exchange: str
     currency: str
-    local_symbol: str 
-    con_id: int 
+    local_symbol: str
+    con_id: int
 
 
 class Position(BaseModel):
     account: str
     contract: Contract
     position: float
-    avg_cost: float 
+    avg_cost: float
+
 
 class PositionsResponse(BaseModel):
     positions: List[Position]
     count: int
 
+
 class PortfolioItem(BaseModel):
     account: str
     contract: Contract
     position: float
-    market_price: float 
-    market_value: float 
-    average_cost: float 
-    unrealized_pnl: float 
-    realized_pnl: float 
+    market_price: float
+    market_value: float
+    average_cost: float
+    unrealized_pnl: float
+    realized_pnl: float
+
 
 class PortfolioResponse(BaseModel):
     portfolio: List[PortfolioItem]
     count: int
 
+
 class PnlResponse(BaseModel):
     account: str
-    daily_pnl: float 
-    unrealized_pnl: float 
-    realized_pnl: float 
+    daily_pnl: float
+    unrealized_pnl: float
+    realized_pnl: float
+
 
 class SinglePnlResponse(BaseModel):
     account: str
     con_id: int
     position: float
-    daily_pnl: float 
-    unrealized_pnl: float 
-    realized_pnl: float 
+    daily_pnl: float
+    unrealized_pnl: float
+    realized_pnl: float
     value: float
 
 

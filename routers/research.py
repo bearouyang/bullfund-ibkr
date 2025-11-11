@@ -4,7 +4,7 @@ from fastapi import Request
 from models import ContractRequest, FundamentalDataRequest, NewsRequest
 from routers.trading import create_contract
 import asyncio
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Any
 from pydantic import BaseModel
 
 
@@ -12,10 +12,12 @@ class ContractDetailsResponse(BaseModel):
     details: List[Any]
     count: int
 
+
 class FundamentalDataResponse(BaseModel):
     symbol: str
     report_type: str
     data: Any  # Can be string or empty list
+
 
 class NewsArticle(BaseModel):
     time: str
@@ -23,23 +25,28 @@ class NewsArticle(BaseModel):
     article_id: str
     headline: str
 
+
 class HistoricalNewsResponse(BaseModel):
     articles: List[NewsArticle]
     count: int
-    
+
+
 class NewsArticleResponse(BaseModel):
     provider_code: str
     article_id: str
     article_type: int
     article_text: str
 
+
 class NewsProvider(BaseModel):
     code: str
     name: str
 
+
 class NewsProvidersResponse(BaseModel):
     providers: List[NewsProvider]
     count: int
+
 
 class OptionChain(BaseModel):
     exchange: str
@@ -48,10 +55,12 @@ class OptionChain(BaseModel):
     multiplier: str
     expirations: List[str]
     strikes: List[float]
-    
+
+
 class OptionChainResponse(BaseModel):
     chains: List[OptionChain]
     count: int
+
 
 class ContractMatch(BaseModel):
     con_id: int
@@ -60,21 +69,26 @@ class ContractMatch(BaseModel):
     primary_exchange: str
     currency: str
 
+
 class SearchResult(BaseModel):
     contract: ContractMatch
     derivative_sec_types: List[str]
+
 
 class SearchContractsResponse(BaseModel):
     matches: List[SearchResult]
     count: int
 
+
 class HistogramData(BaseModel):
     price: float
     count: int
-    
+
+
 class HistogramResponse(BaseModel):
     histogram: List[HistogramData]
     count: int
+
 
 class DividendsResponse(BaseModel):
     symbol: str
@@ -180,7 +194,9 @@ async def get_historical_news(request: NewsRequest, req: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/news/article/{provider_code}/{article_id}", response_model=NewsArticleResponse)
+@router.get(
+    "/news/article/{provider_code}/{article_id}", response_model=NewsArticleResponse
+)
 async def get_news_article(provider_code: str, article_id: str, req: Request):
     """Get a specific news article by provider code and article ID."""
     try:
@@ -267,8 +283,7 @@ async def search_contracts(pattern: str, req: Request):
         ib = req.app.state.ib
         try:
             matches = await asyncio.wait_for(
-                ib.reqMatchingSymbolsAsync(pattern),
-                timeout=10.0  # 10-second timeout
+                ib.reqMatchingSymbolsAsync(pattern), timeout=10.0  # 10-second timeout
             )
         except asyncio.TimeoutError:
             logger.warning(f"Contract search timed out for pattern: {pattern}")
@@ -298,7 +313,10 @@ async def search_contracts(pattern: str, req: Request):
         raise e
     except Exception as e:
         logger.error(f"Error searching contracts for pattern '{pattern}': {e}")
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred while searching for contracts: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An unexpected error occurred while searching for contracts: {e}",
+        )
 
 
 @router.post("/histogram", response_model=HistogramResponse)

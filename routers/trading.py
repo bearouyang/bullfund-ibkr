@@ -25,9 +25,6 @@ from models import (
     OrderCancelRequest,
     SecType,
     OrderType,
-    OrderResponse,
-    ExecutionResponse,
-    ConnectionStatus
 )
 from pydantic import BaseModel
 
@@ -38,38 +35,47 @@ class QualifiedContract(BaseModel):
     secType: str
     primaryExchange: str
     currency: str
-    
+
+
 class QualifiedContractsResponse(BaseModel):
     contracts: List[QualifiedContract]
     count: int
+
 
 class PlaceOrderResponse(BaseModel):
     order_id: int
     status: str
     perm_id: int
 
+
 class OpenOrdersResponse(BaseModel):
     orders: List[Any]  # Trade objects from ib_async
     count: int
+
 
 class AllOrdersResponse(BaseModel):
     orders: List[Any]  # Trade objects from ib_async
     count: int
 
+
 class ExecutionsResponse(BaseModel):
     executions: List[Any]  # Fill objects from ib_async
     count: int
 
+
 class ModifyOrderResponse(BaseModel):
     order_id: int
     status: str
-    
+
+
 class CancelOrderResponse(BaseModel):
     order_id: int
     status: str
 
+
 class CancelAllOrdersResponse(BaseModel):
     status: str
+
 
 class GetOrderResponse(BaseModel):
     order_id: int
@@ -80,6 +86,7 @@ class GetOrderResponse(BaseModel):
     avg_fill_price: float
     contract: Dict[str, Any]
     order: Dict[str, Any]
+
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -138,42 +145,52 @@ def create_order(order_req: OrderRequest):
     elif order_req.order_type == OrderType.LIMIT:
         if order_req.limit_price is None:
             raise ValueError("limit_price is required for limit orders")
-        order = LimitOrder(order_req.action.value, order_req.quantity, order_req.limit_price)
+        order = LimitOrder(
+            order_req.action.value, order_req.quantity, order_req.limit_price
+        )
     elif order_req.order_type == OrderType.STOP:
         if order_req.stop_price is None:
             raise ValueError("stop_price is required for stop orders")
-        order = StopOrder(order_req.action.value, order_req.quantity, order_req.stop_price)
+        order = StopOrder(
+            order_req.action.value, order_req.quantity, order_req.stop_price
+        )
     elif order_req.order_type == OrderType.STOP_LIMIT:
         if order_req.limit_price is None or order_req.stop_price is None:
-            raise ValueError("limit_price and stop_price are required for stop-limit orders")
+            raise ValueError(
+                "limit_price and stop_price are required for stop-limit orders"
+            )
         order = StopLimitOrder(
-            order_req.action.value, 
-            order_req.quantity, 
+            order_req.action.value,
+            order_req.quantity,
             order_req.limit_price,
-            order_req.stop_price
+            order_req.stop_price,
         )
     elif order_req.order_type == OrderType.TRAILING_STOP:
         if order_req.stop_price is None:
-            raise ValueError("stop_price (trailing amount) is required for trailing stop orders")
+            raise ValueError(
+                "stop_price (trailing amount) is required for trailing stop orders"
+            )
         order = Order()
         order.action = order_req.action.value
         order.totalQuantity = order_req.quantity
-        order.orderType = 'TRAIL'
-        order.trailingPercent = order_req.stop_price  # Use stop_price as trailing percent
+        order.orderType = "TRAIL"
+        order.trailingPercent = (
+            order_req.stop_price
+        )  # Use stop_price as trailing percent
     else:
         raise ValueError(f"Unsupported order type: {order_req.order_type}")
-    
+
     # Set common order properties
     order.tif = order_req.time_in_force.value
     order.transmit = order_req.transmit
-    
+
     if order_req.account:
         order.account = order_req.account
     if order_req.parent_id:
         order.parentId = order_req.parent_id
     if order_req.oca_group:
         order.ocaGroup = order_req.oca_group
-    
+
     return order
 
 
@@ -250,17 +267,17 @@ async def modify_order(modify_req: OrderModifyRequest, request: Request):
     """Modify an existing order."""
     try:
         ib = request.app.state.ib
-        
+
         # Find the trade by order_id
         trade = None
         for t in ib.trades():
             if t.order.orderId == modify_req.order_id:
                 trade = t
                 break
-        
+
         if not trade:
             raise HTTPException(status_code=404, detail="Order not found")
-        
+
         # Modify order parameters
         if modify_req.quantity is not None:
             trade.order.totalQuantity = modify_req.quantity
@@ -268,10 +285,10 @@ async def modify_order(modify_req: OrderModifyRequest, request: Request):
             trade.order.lmtPrice = modify_req.limit_price
         if modify_req.stop_price is not None:
             trade.order.auxPrice = modify_req.stop_price
-        
+
         # Place the modified order
         modified_trade = ib.placeOrder(trade.contract, trade.order)
-        
+
         return {
             "order_id": modified_trade.order.orderId,
             "status": modified_trade.orderStatus.status,
@@ -288,20 +305,20 @@ async def cancel_order(cancel_req: OrderCancelRequest, request: Request):
     """Cancel an order."""
     try:
         ib = request.app.state.ib
-        
+
         # Find the trade by order_id
         trade = None
         for t in ib.trades():
             if t.order.orderId == cancel_req.order_id:
                 trade = t
                 break
-        
+
         if not trade:
             raise HTTPException(status_code=404, detail="Order not found")
-        
+
         # Cancel the order
         ib.cancelOrder(trade.order)
-        
+
         return {
             "order_id": cancel_req.order_id,
             "status": "Cancelled",
@@ -319,7 +336,7 @@ async def cancel_all_orders(request: Request):
     try:
         ib = request.app.state.ib
         ib.reqGlobalCancel()
-        
+
         return {"status": "All orders cancelled"}
     except Exception as e:
         logger.error(f"Error cancelling all orders: {e}")
@@ -331,7 +348,7 @@ async def get_order(order_id: int, request: Request):
     """Get details of a specific order."""
     try:
         ib = request.app.state.ib
-        
+
         # Find the trade by order_id
         for trade in ib.trades():
             if trade.order.orderId == order_id:
@@ -355,7 +372,7 @@ async def get_order(order_id: int, request: Request):
                         "stop_price": trade.order.auxPrice,
                     },
                 }
-        
+
         raise HTTPException(status_code=404, detail="Order not found")
     except HTTPException:
         raise
